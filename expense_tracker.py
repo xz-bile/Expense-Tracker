@@ -1,39 +1,74 @@
+# -*- coding: utf-8 -*-
 import argparse
 import json
 import os
 import csv
+import hashlib
+import getpass
 from datetime import datetime
 
-# ÅäÖÃÎÄ¼şÃû
-DATA_FILE = "expenses.json"
+# é…ç½®æ–‡ä»¶
+EXPENSE_FILE = "expenses.json"
+USER_FILE = "users.json"
 
-# --- Êı¾İ³Ö¾Ã»¯Âß¼­ ---
+# --- æ•°æ®æŒä¹…åŒ–ä¸å®‰å…¨é€»è¾‘ ---
 
-def load_expenses():
-    """´Ó JSON ÎÄ¼ş¼ÓÔØÊı¾İ"""
-    if not os.path.exists(DATA_FILE):
-        return []
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
+def load_json(filename):
+    if not os.path.exists(filename):
+        return {}
+    with open(filename, "r", encoding="utf-8") as f:
         try:
             return json.load(f)
         except json.JSONDecodeError:
-            return []
+            return {}
 
-def save_expenses(expenses):
-    """±£´æÊı¾İµ½ JSON ÎÄ¼ş"""
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(expenses, f, indent=4, ensure_ascii=False)
+def save_json(filename, data):
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
 
-# --- ºËĞÄÒµÎñ¹¦ÄÜ ---
+def hash_password(password):
+    """ä½¿ç”¨ SHA-256 ç®—æ³•å¯¹å¯†ç è¿›è¡Œå“ˆå¸ŒåŠ å¯†"""
+    return hashlib.sha256(password.encode()).hexdigest()
 
-def add_expense(description, amount, category="Í¨ÓÃ"):
-    """Ìí¼ÓÖ§³ö"""
+# --- ç”¨æˆ·ç®¡ç†æ¨¡å— ---
+
+def register():
+    username = input("è¯·è¾“å…¥æ–°ç”¨æˆ·å: ").strip()
+    users = load_json(USER_FILE)
+    if username in users:
+        print("âŒ é”™è¯¯ï¼šè¯¥ç”¨æˆ·åå·²è¢«æ³¨å†Œã€‚")
+        return
+    password = getpass.getpass("è¯·è¾“å…¥æ–°å¯†ç : ")
+    confirm = getpass.getpass("è¯·å†æ¬¡è¾“å…¥å¯†ç : ")
+    if password != confirm:
+        print("âŒ é”™è¯¯ï¼šä¸¤æ¬¡è¾“å…¥å¯†ç ä¸ä¸€è‡´ã€‚")
+        return
+    users[username] = hash_password(password)
+    save_json(USER_FILE, users)
+    print(f"âœ… ç”¨æˆ· {username} æ³¨å†ŒæˆåŠŸï¼ç°åœ¨å¯ä»¥å°è¯•ç™»å½•ã€‚")
+
+def authenticate():
+    """ç”¨æˆ·ç™»å½•éªŒè¯"""
+    username = input("ç”¨æˆ·å: ").strip()
+    password = getpass.getpass("å¯†ç : ")
+    users = load_json(USER_FILE)
+    if username in users and users[username] == hash_password(password):
+        return username
+    print("âŒ é”™è¯¯ï¼šç”¨æˆ·åæˆ–å¯†ç ä¸æ­£ç¡®ã€‚")
+    return None
+
+# --- è´¹ç”¨ç®¡ç†æ¨¡å— (æ”¯æŒå¤šç”¨æˆ·éš”ç¦») ---
+
+def add_expense(user, description, amount, category="é€šç”¨"):
     if amount <= 0:
-        print("? ´íÎó£º½ğ¶î±ØĞë´óÓÚ 0¡£")
+        print("âŒ é”™è¯¯ï¼šé‡‘é¢å¿…é¡»å¤§äº 0ã€‚")
         return
     
-    expenses = load_expenses()
-    new_id = expenses[-1]['id'] + 1 if expenses else 1
+    all_data = load_json(EXPENSE_FILE)
+    user_expenses = all_data.get(user, [])
+    
+    # è·å–è¯¥ç”¨æˆ·ä¸‹çš„æ–° ID
+    new_id = user_expenses[-1]['id'] + 1 if user_expenses else 1
     
     new_expense = {
         "id": new_id,
@@ -43,72 +78,44 @@ def add_expense(description, amount, category="Í¨ÓÃ"):
         "category": category
     }
     
-    expenses.append(new_expense)
-    save_expenses(expenses)
-    print(f"? Ö§³öÌí¼Ó³É¹¦ (ID: {new_id})")
+    user_expenses.append(new_expense)
+    all_data[user] = user_expenses
+    save_json(EXPENSE_FILE, all_data)
+    print(f"âœ… {user} çš„æ”¯å‡ºå·²æ·»åŠ  (ID: {new_id})")
 
-def update_expense(expense_id, description=None, amount=None):
-    """¸üĞÂÏÖÓĞÖ§³ö"""
-    expenses = load_expenses()
-    for exp in expenses:
-        if exp["id"] == expense_id:
-            if description: exp["description"] = description
-            if amount: 
-                if amount <= 0:
-                    print("? ´íÎó£º½ğ¶î±ØĞë´óÓÚ 0¡£")
-                    return
-                exp["amount"] = amount
-            save_expenses(expenses)
-            print(f"? ID {expense_id} ¸üĞÂ³É¹¦")
-            return
-    print(f"? ´íÎó£ºÎ´ÕÒµ½ ID Îª {expense_id} µÄ¼ÇÂ¼¡£")
-
-def delete_expense(expense_id):
-    """É¾³ıÖ§³ö"""
-    expenses = load_expenses()
-    updated = [e for e in expenses if e['id'] != expense_id]
+def list_expenses(user):
+    all_data = load_json(EXPENSE_FILE)
+    user_expenses = all_data.get(user, [])
     
-    if len(expenses) == len(updated):
-        print(f"? ´íÎó£ºÎ´ÕÒµ½ ID Îª {expense_id} µÄ¼ÇÂ¼¡£")
-    else:
-        save_expenses(updated)
-        print(f"?? Ö§³ö ID {expense_id} ÒÑÉ¾³ı¡£")
-
-def list_expenses():
-    """²é¿´ËùÓĞÖ§³ö"""
-    expenses = load_expenses()
-    if not expenses:
-        print("? ÔİÎŞÖ§³ö¼ÇÂ¼¡£")
+    if not user_expenses:
+        print(f"ğŸ“­ ç”¨æˆ· {user} æš‚æ— æ”¯å‡ºè®°å½•ã€‚")
         return
     
-    print(f"{'ID':<5} {'ÈÕÆÚ':<12} {'·ÖÀà':<10} {'ÃèÊö':<15} {'½ğ¶î':<10}")
+    print(f"\n--- {user} çš„æ”¯å‡ºæ¸…å• ---")
+    print(f"{'ID':<5} {'æ—¥æœŸ':<12} {'åˆ†ç±»':<10} {'æè¿°':<15} {'é‡‘é¢':<10}")
     print("-" * 55)
-    for exp in expenses:
-        category = exp.get("category", "ÎŞ")
-        print(f"{exp['id']:<5} {exp['date']:<12} {category:<10} {exp['description']:<15} ${exp['amount']:<10}")
+    for exp in user_expenses:
+        print(f"{exp['id']:<5} {exp['date']:<12} {exp.get('category',''):<10} {exp['description']:<15} ${exp['amount']:<10}")
 
-def show_summary(month=None):
-    """²é¿´Ö§³ö»ã×Ü"""
-    expenses = load_expenses()
+def show_summary(user, month=None):
+    all_data = load_json(EXPENSE_FILE)
+    user_expenses = all_data.get(user, [])
     now = datetime.now()
     
     if month:
-        if not 1 <= month <= 12:
-            print("? ´íÎó£ºÔÂ·İ±ØĞëÔÚ 1-12 Ö®¼ä¡£")
-            return
-        filtered = [e for e in expenses if datetime.strptime(e['date'], "%Y-%m-%d").month == month 
+        filtered = [e for e in user_expenses if datetime.strptime(e['date'], "%Y-%m-%d").month == month 
                     and datetime.strptime(e['date'], "%Y-%m-%d").year == now.year]
         total = sum(e['amount'] for e in filtered)
-        print(f"? {month} ÔÂ×ÜÖ§³ö: ${total}")
+        print(f"ğŸ“… ç”¨æˆ· {user} - {month}æœˆæ€»æ”¯å‡º: ${total}")
     else:
-        total = sum(e['amount'] for e in expenses)
-        print(f"? ÀÛ¼Æ×ÜÖ§³ö: ${total}")
+        total = sum(e['amount'] for e in user_expenses)
+        print(f"ğŸ’° ç”¨æˆ· {user} - ç´¯è®¡æ€»æ”¯å‡º: ${total}")
 
-def export_to_csv(filename="expenses.csv"):
-    """µ¼³öÎª CSV ÎÄ¼ş"""
-    expenses = load_expenses()
-    if not expenses:
-        print("? Ã»ÓĞ¼ÇÂ¼¿É¹©µ¼³ö¡£")
+def export_csv(user, filename="my_expenses.csv"):
+    all_data = load_json(EXPENSE_FILE)
+    user_expenses = all_data.get(user, [])
+    if not user_expenses:
+        print("âŒ æ²¡æœ‰è®°å½•å¯ä¾›å¯¼å‡ºã€‚")
         return
     
     keys = ["id", "date", "description", "amount", "category"]
@@ -116,61 +123,50 @@ def export_to_csv(filename="expenses.csv"):
         with open(filename, "w", newline="", encoding="utf-8-sig") as f:
             writer = csv.DictWriter(f, fieldnames=keys)
             writer.writeheader()
-            # Ö»Ğ´Èë keys ÖĞ¶¨ÒåµÄ×Ö¶Î£¬·ÀÖ¹¾ÉÊı¾İÈ±ÉÙ×Ö¶Îµ¼ÖÂ±¨´í
-            for exp in expenses:
-                row = {k: exp.get(k, "") for k in keys}
-                writer.writerow(row)
-        print(f"? Êı¾İÒÑ³É¹¦µ¼³öÖÁ£º{filename}")
+            for exp in user_expenses:
+                writer.writerow({k: exp.get(k, "") for k in keys})
+        print(f"ğŸš€ {user} çš„æ•°æ®å·²å¯¼å‡ºè‡³ï¼š{filename}")
     except Exception as e:
-        print(f"? µ¼³öÊ§°Ü£º{e}")
+        print(f"âŒ å¯¼å‡ºå¤±è´¥ï¼š{e}")
 
-# --- ÃüÁîĞĞ½çÃæ ---
+# --- ä¸»ç¨‹åºé€»è¾‘ ---
 
 def main():
-    parser = argparse.ArgumentParser(description="Expense Tracker - ¸öÈË¼ÇÕËÃüÁîĞĞ¹¤¾ß")
+    parser = argparse.ArgumentParser(description="Expense Tracker Pro - æ”¯æŒç”¨æˆ·ç™»å½•çš„è®°è´¦å·¥å…·")
     subparsers = parser.add_subparsers(dest="command")
 
-    # add
-    add_parser = subparsers.add_parser("add", help="Ìí¼ÓÖ§³ö¼ÇÂ¼")
-    add_parser.add_argument("--description", required=True, help="ÃèÊö")
-    add_parser.add_argument("--amount", type=float, required=True, help="½ğ¶î")
-    add_parser.add_argument("--category", default="Í¨ÓÃ", help="·ÖÀà")
+    # æ³¨å†Œå‘½ä»¤
+    subparsers.add_parser("register", help="æ³¨å†Œæ–°è´¦å·")
 
-    # list
-    subparsers.add_parser("list", help="²é¿´ËùÓĞ¼ÇÂ¼")
+    # ä¸šåŠ¡å‘½ä»¤ (éƒ½éœ€è¦ç™»å½•)
+    subparsers.add_parser("add", help="æ·»åŠ æ”¯å‡º").add_argument("--description", required=True); \
+    subparsers.add_parser("add").add_argument("--amount", type=float, required=True); \
+    subparsers.add_parser("add").add_argument("--category", default="é€šç”¨")
 
-    # update
-    upd_parser = subparsers.add_parser("update", help="¸üĞÂ¼ÇÂ¼")
-    upd_parser.add_argument("--id", type=int, required=True, help="¼ÇÂ¼ ID")
-    upd_parser.add_argument("--description", help="ĞÂÃèÊö")
-    upd_parser.add_argument("--amount", type=float, help="ĞÂ½ğ¶î")
+    subparsers.add_parser("list", help="æŸ¥çœ‹è®°å½•")
+    
+    sum_parser = subparsers.add_parser("summary", help="æ±‡æ€»æŸ¥è¯¢")
+    sum_parser.add_argument("--month", type=int, help="æœˆä»½ (1-12)")
 
-    # delete
-    del_parser = subparsers.add_parser("delete", help="É¾³ı¼ÇÂ¼")
-    del_parser.add_argument("--id", type=int, required=True, help="¼ÇÂ¼ ID")
-
-    # summary
-    sum_parser = subparsers.add_parser("summary", help="×Ü½áÖ§³ö")
-    sum_parser.add_argument("--month", type=int, help="ÌØ¶¨ÔÂ·İ (1-12)")
-
-    # export
-    exp_parser = subparsers.add_parser("export", help="µ¼³ö CSV")
-    exp_parser.add_argument("--filename", default="expenses.csv", help="Êä³öÎÄ¼şÃû")
+    exp_parser = subparsers.add_parser("export", help="å¯¼å‡ºæ•°æ®")
+    exp_parser.add_argument("--filename", default="export.csv")
 
     args = parser.parse_args()
 
-    if args.command == "add":
-        add_expense(args.description, args.amount, args.category)
-    elif args.command == "list":
-        list_expenses()
-    elif args.command == "update":
-        update_expense(args.id, args.description, args.amount)
-    elif args.command == "delete":
-        delete_expense(args.id)
-    elif args.command == "summary":
-        show_summary(args.month)
-    elif args.command == "export":
-        export_to_csv(args.filename)
+    if args.command == "register":
+        register()
+    elif args.command in ["add", "list", "summary", "export"]:
+        # æ‰§è¡Œä¸šåŠ¡æ“ä½œå‰å¼ºåˆ¶ç™»å½•
+        user = authenticate()
+        if user:
+            if args.command == "add":
+                add_expense(user, args.description, args.amount, args.category)
+            elif args.command == "list":
+                list_expenses(user)
+            elif args.command == "summary":
+                show_summary(user, args.month)
+            elif args.command == "export":
+                export_csv(user, args.filename)
     else:
         parser.print_help()
 
