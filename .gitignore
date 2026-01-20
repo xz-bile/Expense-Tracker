@@ -1,0 +1,9 @@
+# 忽略数据文件
+expenses.json
+
+# 忽略 Python 缓存
+__pycache__/
+*.pyc
+
+# 忽略导出的 CSV
+*.csv
